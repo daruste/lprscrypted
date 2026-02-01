@@ -1,0 +1,110 @@
+blueprint:
+  name: "🇳🇱 NL ANPR – Frigate + RDW voertuiginfo"
+  description: >
+    Volledige Nederlandse ANPR blueprint.
+    Leest kentekens via Frigate, haalt voertuiginfo op via RDW Open Data
+    (zonder API-key) en stuurt notificaties met snapshot.
+  domain: automation
+
+  input:
+    frigate_camera:
+      name: Frigate camera naam
+      description: Exacte cameranaam uit frigate.yml
+    notify_device:
+      name: Mobiele app (notificaties)
+      selector:
+        device:
+          integration: mobile_app
+    speaker:
+      name: Speaker (optioneel)
+      default: []
+      selector:
+        entity:
+          domain: media_player
+    last_plate_helper:
+      name: Helper – laatst kenteken
+      selector:
+        entity:
+          domain: input_text
+    snapshot_helper:
+      name: Helper – snapshot URL
+      selector:
+        entity:
+          domain: input_text
+
+trigger:
+  - platform: mqtt
+    topic: frigate/events
+
+variables:
+  after: "{{ trigger.payload_json.after }}"
+  before: "{{ trigger.payload_json.before }}"
+  camera: "{{ after.camera or before.camera }}"
+  label: "{{ after.label or before.label }}"
+  event_id: "{{ after.id or before.id }}"
+
+  raw_plate: "{{ after.recognized_license_plate or before.recognized_license_plate }}"
+  plate: >-
+    {% if raw_plate is list and raw_plate|length > 0 %}
+      {{ raw_plate[0] | upper | regex_replace('[^A-Z0-9]', '') }}
+    {% elif raw_plate is string %}
+      {{ raw_plate | upper | regex_replace('[^A-Z0-9]', '') }}
+    {% else %}
+      ""
+    {% endif %}
+
+  snapshot: "/api/frigate/notifications/{{ event_id }}/snapshot.jpg"
+  stored_plate: "{{ states(inputs.last_plate_helper) }}"
+
+condition:
+  - condition: template
+    value_template: "{{ camera == inputs.frigate_camera }}"
+  - condition: template
+    value_template: "{{ label in ['car','truck','bus','motorcycle'] }}"
+  - condition: template
+    value_template: "{{ plate | length >= 4 }}"
+  - condition: template
+    value_template: "{{ plate != stored_plate }}"
+
+action:
+  # Kenteken opslaan
+  - service: input_text.set_value
+    target:
+      entity_id: !input last_plate_helper
+    data:
+      value: "{{ plate }}"
+
+  # Snapshot opslaan
+  - service: input_text.set_value
+    target:
+      entity_id: !input snapshot_helper
+    data:
+      value: "{{ snapshot }}"
+
+  # Push notificatie
+  - service: notify.mobile_app
+    data:
+      title: "🚗 Voertuig gedetecteerd"
+      message: >
+        {{ state_attr('sensor.rdw_voertuig','merk') | default('Onbekend') }}
+        {{ state_attr('sensor.rdw_voertuig','handelsbenaming') | default('') }}
+        ({{ plate }})
+        – kleur {{ state_attr('sensor.rdw_voertuig','eerste_kleur') | default('?') }}
+        – APK tot {{ state_attr('sensor.rdw_voertuig','vervaldatum_apk') | default('?') }}
+      data:
+        image: "{{ snapshot }}"
+        clickAction: "{{ snapshot }}"
+
+  # Optionele TTS
+  - if:
+      - condition: template
+        value_template: "{{ inputs.speaker != [] }}"
+    then:
+      - service: tts.google_say
+        target:
+          entity_id: !input speaker
+        data:
+          message: >
+            {{ state_attr('sensor.rdw_voertuig','merk') }}
+            {{ state_attr('sensor.rdw_voertuig','handelsbenaming') }}
+            gedetecteerd.
