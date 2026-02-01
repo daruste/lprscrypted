@@ -14,12 +14,6 @@ blueprint:
       selector:
         device:
           integration: mobile_app
-    speaker:
-      name: Optional speaker for TTS
-      default: []
-      selector:
-        entity:
-          domain: media_player
     last_plate_helper:
       name: Helper – last plate
       selector:
@@ -97,17 +91,3 @@ action:
         – APK tot {{ state_attr('sensor.rdw_voertuig','vervaldatum_apk') | default('?') }}
       data:
         image: "{{ snapshot }}"
-
-  # Optional TTS
-  - if:
-      - condition: template
-        value_template: "{{ !input speaker != [] }}"
-    then:
-      - service: tts.google_say
-        target:
-          entity_id: !input speaker
-        data:
-          message: >
-            {{ state_attr('sensor.rdw_voertuig','merk') }}
-            {{ state_attr('sensor.rdw_voertuig','handelsbenaming') }}
-            gedetecteerd.
