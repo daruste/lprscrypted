@@ -1,28 +1,29 @@
 blueprint:
   name: "🇳🇱 NL ANPR – Frigate + RDW voertuiginfo"
   description: >
-    Volledige Nederlandse ANPR blueprint.
-    Leest kentekens via Frigate, haalt voertuiginfo op via RDW Open Data
-    (zonder API-key) en stuurt notificaties met snapshot.
+    Frigate ANPR blueprint for NL vehicles.
+    Fetches RDW info dynamically and sends notification + TTS.
   domain: automation
 
   input:
     frigate_camera:
-      name: Frigate camera naam
-      description: Exacte cameranaam uit frigate.yml
+      name: Frigate camera
+      selector:
+        entity:
+          domain: camera
     notify_device:
-      name: Mobiele app (notificaties)
+      name: Mobile device for notifications
       selector:
         device:
           integration: mobile_app
     speaker:
-      name: Speaker (optioneel)
+      name: Optional speaker for TTS
       default: []
       selector:
         entity:
           domain: media_player
     last_plate_helper:
-      name: Helper – laatst kenteken
+      name: Helper – last plate
       selector:
         entity:
           domain: input_text
@@ -42,7 +43,6 @@ variables:
   camera: "{{ after.camera or before.camera }}"
   label: "{{ after.label or before.label }}"
   event_id: "{{ after.id or before.id }}"
-
   raw_plate: "{{ after.recognized_license_plate or before.recognized_license_plate }}"
   plate: >-
     {% if raw_plate is list and raw_plate|length > 0 %}
@@ -52,7 +52,6 @@ variables:
     {% else %}
       ""
     {% endif %}
-
   snapshot: "/api/frigate/notifications/{{ event_id }}/snapshot.jpg"
   stored_plate: "{{ states(inputs.last_plate_helper) }}"
 
@@ -67,21 +66,28 @@ condition:
     value_template: "{{ plate != stored_plate }}"
 
 action:
-  # Kenteken opslaan
+  # Update helpers
   - service: input_text.set_value
     target:
       entity_id: !input last_plate_helper
     data:
       value: "{{ plate }}"
 
-  # Snapshot opslaan
   - service: input_text.set_value
     target:
       entity_id: !input snapshot_helper
     data:
       value: "{{ snapshot }}"
 
-  # Push notificatie
+  # Fetch RDW info dynamically
+  - service: rest_command.rdw_lookup
+    data:
+      kenteken: "{{ plate }}"
+
+  # Wait a moment for REST command to finish
+  - delay: "2"
+
+  # Send push notification
   - service: notify.mobile_app
     data:
       title: "🚗 Voertuig gedetecteerd"
@@ -93,9 +99,8 @@ action:
         – APK tot {{ state_attr('sensor.rdw_voertuig','vervaldatum_apk') | default('?') }}
       data:
         image: "{{ snapshot }}"
-        clickAction: "{{ snapshot }}"
 
-  # Optionele TTS
+  # Optional TTS
   - if:
       - condition: template
         value_template: "{{ inputs.speaker != [] }}"
