@@ -1,6 +1,6 @@
 blueprint:
   name: "🇳🇱 NL ANPR – Frigate + RDW voertuiginfo"
-  description: "Frigate ANPR blueprint voor NL voertuigen. Fetches RDW info and sends notifications/TTS."
+  description: "Frigate ANPR blueprint voor NL voertuigen. Fetches RDW info and sends push notifications."
   domain: automation
 
   input:
@@ -45,7 +45,7 @@ variables:
       ""
     {% endif %}
   snapshot: "/api/frigate/notifications/{{ event_id }}/snapshot.jpg"
-  stored_plate: "{{ states('!input last_plate_helper') }}"
+  stored_plate: "{{ states('input_text.anpr_last_plate') }}"
 
 condition:
   - condition: template
