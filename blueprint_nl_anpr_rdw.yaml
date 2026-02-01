@@ -1,8 +1,6 @@
 blueprint:
   name: "🇳🇱 NL ANPR – Frigate + RDW voertuiginfo"
-  description: >
-    Frigate ANPR blueprint for NL vehicles.
-    Fetches RDW info dynamically and sends notification + TTS.
+  description: "Frigate ANPR blueprint voor NL voertuigen. Fetches RDW info and sends notifications/TTS."
   domain: automation
 
   input:
@@ -53,11 +51,11 @@ variables:
       ""
     {% endif %}
   snapshot: "/api/frigate/notifications/{{ event_id }}/snapshot.jpg"
-  stored_plate: "{{ states(inputs.last_plate_helper) }}"
+  stored_plate: "{{ states('!input last_plate_helper') }}"
 
 condition:
   - condition: template
-    value_template: "{{ camera == inputs.frigate_camera }}"
+    value_template: "{{ camera == !input frigate_camera }}"
   - condition: template
     value_template: "{{ label in ['car','truck','bus','motorcycle'] }}"
   - condition: template
@@ -103,7 +101,7 @@ action:
   # Optional TTS
   - if:
       - condition: template
-        value_template: "{{ inputs.speaker != [] }}"
+        value_template: "{{ !input speaker != [] }}"
     then:
       - service: tts.google_say
         target:
